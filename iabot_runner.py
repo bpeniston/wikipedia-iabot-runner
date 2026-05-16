@@ -241,7 +241,8 @@ def submit_page(session, title):
 
     # Find the URL / article field (try known names, then any text input)
     url_field = (
-        form.find("input", {"name": "url"})
+        form.find("input", {"name": "pagesearch"})
+        or form.find("input", {"name": "url"})
         or form.find("input", {"name": "page_url"})
         or form.find("input", {"name": "article"})
         or form.find("input", {"name": "wikipediaurl"})
@@ -249,10 +250,12 @@ def submit_page(session, title):
     )
     if url_field and url_field.get("name"):
         payload[url_field["name"]] = wp_url
+        log.info("  Form field: %r = %s", url_field["name"], wp_url)
     else:
-        # Last-resort fallback
         payload["url"] = wp_url
-        log.debug("Could not identify URL field by name; using 'url' key")
+        log.warning("  Could not identify URL field — dumping all inputs:")
+        for k, v in payload.items():
+            log.warning("    %r = %r", k, v)
 
     # Resolve form action URL
     action = form.get("action") or IABOT_BASE
@@ -288,6 +291,12 @@ def submit_page(session, title):
             iabot_msg = (p or el).get_text(" ", strip=True)[:200]
             if iabot_msg:
                 break
+
+    if not iabot_msg:
+        # IABot returns status in plain text outside standard selectors
+        body = r2.text.strip()
+        if body:
+            iabot_msg = body[:200]
 
     return "ok", iabot_msg
 
@@ -345,6 +354,18 @@ def main():
         log.warning("Could not read Safari cookies (%s); falling back to IABOT_SESSION env var", exc)
 
     if not iabot_cookies_loaded:
+        # Try the saved cookie file (~/.iabot_cookie written by save_iabot_cookie.py)
+        cookie_file = Path.home() / ".iabot_cookie"
+        if cookie_file.exists():
+            raw = cookie_file.read_text().strip()
+            if "=" in raw:
+                name, _, value = raw.partition("=")
+                session.cookies.set(name.strip(), value.strip(),
+                                    domain="iabot.wmcloud.org", path="/")
+                log.info("Loaded IABot cookie from ~/.iabot_cookie")
+                iabot_cookies_loaded = True
+
+    if not iabot_cookies_loaded:
         if iabot_session:
             session.cookies.set("IABotManagementConsole", iabot_session,
                                 domain="iabot.wmcloud.org", path="/")
@@ -352,7 +373,7 @@ def main():
         else:
             sys.exit(
                 "No IABot session found.\n"
-                "Log in at https://iabot.wmcloud.org in Safari, then re-run the script."
+                "Run save_iabot_cookie.py from Terminal on the Air, then restart."
             )
 
     # Log in to Wikipedia to access watchlist
@@ -406,6 +427,12 @@ def main():
             )
             webbrowser.open("https://iabot.wmcloud.org")
             sys.exit(1)
+
+        if result == "error":
+            # Retry once after a short wait before giving up
+            log.warning("  Retrying in 30s…")
+            time.sleep(30)
+            result, iabot_msg = submit_page(session, title)
 
         entry = {
             "title":     title,
