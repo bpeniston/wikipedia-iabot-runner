@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wikipedia IABot Runner — Status</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #f9f9f9; color: #222; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 24px; }
+  .stats { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 24px; }
+  .stat { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px 20px; min-width: 120px; }
+  .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-value { font-size: 1.8rem; font-weight: 600; margin-top: 4px; }
+  .progress-wrap { background: #e0e0e0; border-radius: 999px; height: 12px; margin-bottom: 8px; overflow: hidden; }
+  .progress-bar { background: #2563eb; height: 100%; border-radius: 999px; transition: width 0.4s; }
+  .progress-label { font-size: 0.85rem; color: #555; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+  th { background: #f0f0f0; text-align: left; padding: 10px 14px; font-size: 0.8rem; color: #555; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { padding: 9px 14px; border-top: 1px solid #eee; font-size: 0.9rem; vertical-align: top; }
+  td.result { color: #16a34a; }
+  td.result.skipped { color: #b45309; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+  .badge.ok { background: #dcfce7; color: #15803d; }
+  .badge.skipped { background: #fef9c3; color: #854d0e; }
+  .refresh { font-size: 0.8rem; color: #999; margin-top: 20px; text-align: right; }
+  .eta { color: #2563eb; }
+  #status-msg { color: #dc2626; font-size: 0.85rem; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<h1>Wikipedia IABot Runner</h1>
+<div class="subtitle">Submitting watchlist articles to the Internet Archive Bot &bull; <span id="status-msg"></span></div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-label">Done</div><div class="stat-value" id="done">—</div></div>
+  <div class="stat"><div class="stat-label">Remaining</div><div class="stat-value" id="remaining">—</div></div>
+  <div class="stat"><div class="stat-label">Total</div><div class="stat-value" id="total">—</div></div>
+  <div class="stat"><div class="stat-label">Skipped</div><div class="stat-value" id="skipped">—</div></div>
+  <div class="stat"><div class="stat-label">Est. finish</div><div class="stat-value eta" id="eta" style="font-size:1rem;padding-top:6px">—</div></div>
+</div>
+
+<div class="progress-wrap"><div class="progress-bar" id="bar" style="width:0%"></div></div>
+<div class="progress-label" id="pct">Loading…</div>
+
+<table>
+  <thead><tr><th>Article</th><th>Result</th><th>Time</th></tr></thead>
+  <tbody id="tbody"></tbody>
+</table>
+
+<div class="refresh">Auto-refreshes every 60 seconds &bull; Last fetch: <span id="fetched">—</span></div>
+
+<script>
+function load() {
+  fetch('status.json?_=' + Date.now())
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(d => {
+      document.getElementById('done').textContent      = d.done.toLocaleString();
+      document.getElementById('remaining').textContent = d.queue_remaining.toLocaleString();
+      document.getElementById('total').textContent     = d.total.toLocaleString();
+      document.getElementById('skipped').textContent   = d.skipped.toLocaleString();
+
+      const pct = d.total > 0 ? (d.done / d.total * 100) : 0;
+      document.getElementById('bar').style.width = pct.toFixed(1) + '%';
+      document.getElementById('pct').textContent = pct.toFixed(1) + '% complete';
+
+      // ETA: 1 page per minute
+      if (d.queue_remaining > 0) {
+        const mins = d.queue_remaining;
+        const hrs  = Math.floor(mins / 60);
+        const days = Math.floor(hrs / 24);
+        let eta = days > 0 ? days + 'd ' + (hrs % 24) + 'h'
+                : hrs > 0  ? hrs + 'h ' + (mins % 60) + 'm'
+                :             mins + 'm';
+        document.getElementById('eta').textContent = eta;
+      } else {
+        document.getElementById('eta').textContent = 'Done!';
+      }
+
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+      (d.recent || []).slice().reverse().forEach(item => {
+        const tr = document.createElement('tr');
+        const ok = item.result === 'ok';
+        tr.innerHTML =
+          '<td><a href="https://en.wikipedia.org/wiki/' +
+            encodeURIComponent(item.title.replace(/ /g,'_')) + '" target="_blank">' +
+            escHtml(item.title) + '</a></td>' +
+          '<td><span class="badge ' + (ok ? 'ok' : 'skipped') + '">' +
+            (ok ? 'submitted' : item.result) + '</span>' +
+            (item.iabot_msg ? '<br><small style="color:#555">' + escHtml(item.iabot_msg) + '</small>' : '') +
+            '</td>' +
+          '<td style="white-space:nowrap;color:#888">' + fmtTime(item.time) + '</td>';
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('fetched').textContent = new Date().toLocaleTimeString();
+      document.getElementById('status-msg').textContent = '';
+    })
+    .catch(e => {
+      document.getElementById('status-msg').textContent = 'Could not load status.json — script may not be running yet.';
+    });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>
