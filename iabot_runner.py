@@ -236,8 +236,19 @@ def submit_page(session, title):
     payload = {}
     for inp in form.find_all("input"):
         name = inp.get("name")
-        if name:
+        if not name:
+            continue
+        itype = inp.get("type", "text").lower()
+        if itype == "checkbox":
+            # Only include checked checkboxes; use "on" if no value set
+            if inp.has_attr("checked"):
+                payload[name] = inp.get("value", "on") or "on"
+        elif itype != "submit":
             payload[name] = inp.get("value", "")
+
+    # Always check the "add archives" box — this is what actually makes IABot
+    # apply the archives to the article, not just analyze it.
+    payload["archiveall"] = "on"
 
     # Find the URL / article field (try known names, then any text input)
     url_field = (
@@ -264,7 +275,7 @@ def submit_page(session, title):
 
     # ── Step 3: Submit ─────────────────────────────────────────────────────
     try:
-        r2 = session.post(action, data=payload, timeout=60)
+        r2 = session.post(action, data=payload, timeout=120)
         r2.raise_for_status()
     except requests.RequestException as exc:
         log.error("Network error submitting to IABot: %s", exc)
@@ -293,10 +304,16 @@ def submit_page(session, title):
                 break
 
     if not iabot_msg:
-        # IABot returns status in plain text outside standard selectors
-        body = r2.text.strip()
-        if body:
-            iabot_msg = body[:200]
+        # IABot embeds its processing log in an HTML comment at the top.
+        # Extract the summary line: "Rescued: X; Tagged dead: Y; Archived: Z"
+        import re
+        m = re.search(r'Rescued:.*?(?=\n|$)', r2.text)
+        if m:
+            iabot_msg = m.group(0).strip()
+        else:
+            body = r2.text.strip()
+            if body:
+                iabot_msg = body[:200]
 
     return "ok", iabot_msg
 
@@ -447,6 +464,12 @@ def main():
             state["queue"].pop(0)
             save_progress(state)
             log.info("  ✓ submitted  —  %s", iabot_msg or "")
+        elif result == "error":
+            # Move to end of queue so it gets another chance later
+            state["queue"].pop(0)
+            state["queue"].append(title)
+            save_progress(state)
+            log.warning("  ✗ timed out — moved %s to end of queue", title)
         else:
             log.warning("  ✗ skipping %s", title)
             state["queue"].pop(0)
