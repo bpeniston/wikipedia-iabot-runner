@@ -21,8 +21,9 @@
   td.result { color: #16a34a; }
   td.result.skipped { color: #b45309; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
-  .badge.ok { background: #dcfce7; color: #15803d; }
-  .badge.skipped { background: #fef9c3; color: #854d0e; }
+  .badge.rescued  { background: #dcfce7; color: #15803d; }
+  .badge.nochange { background: #f3f4f6; color: #6b7280; }
+  .badge.error    { background: #fef9c3; color: #854d0e; }
   .refresh { font-size: 0.8rem; color: #999; margin-top: 20px; text-align: right; }
   .eta { color: #2563eb; }
   #status-msg { color: #dc2626; font-size: 0.85rem; min-height: 1.2em; }
@@ -81,14 +82,30 @@ function load() {
       tbody.innerHTML = '';
       (d.recent || []).slice().reverse().forEach(item => {
         const tr = document.createElement('tr');
-        const ok = item.result === 'ok';
+        // Determine badge from result + iabot_msg
+        let badgeClass, badgeText;
+        if (item.result !== 'ok') {
+          badgeClass = 'error'; badgeText = item.result;
+        } else {
+          const m = item.iabot_msg && item.iabot_msg.match(/Rescued:\s*(\d+)/);
+          const rescued = m ? parseInt(m[1]) : 0;
+          if (rescued > 0) {
+            badgeClass = 'rescued';
+            badgeText  = rescued + ' rescued';
+          } else {
+            badgeClass = 'nochange';
+            badgeText  = 'no changes';
+          }
+        }
+        // Show iabot_msg only if it's the clean Rescued: line (not raw HTML)
+        const msg = item.iabot_msg && !item.iabot_msg.trim().startsWith('<')
+          ? escHtml(item.iabot_msg) : '';
         tr.innerHTML =
           '<td><a href="https://en.wikipedia.org/wiki/' +
             encodeURIComponent(item.title.replace(/ /g,'_')) + '" target="_blank">' +
             escHtml(item.title) + '</a></td>' +
-          '<td><span class="badge ' + (ok ? 'ok' : 'skipped') + '">' +
-            (ok ? 'submitted' : item.result) + '</span>' +
-            (item.iabot_msg ? '<br><small style="color:#555">' + escHtml(item.iabot_msg) + '</small>' : '') +
+          '<td><span class="badge ' + badgeClass + '">' + badgeText + '</span>' +
+            (msg ? '<br><small style="color:#555">' + msg + '</small>' : '') +
             '</td>' +
           '<td style="white-space:nowrap;color:#888">' + fmtTime(item.time) + '</td>';
         tbody.appendChild(tr);

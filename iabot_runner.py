@@ -309,11 +309,8 @@ def submit_page(session, title):
         import re
         m = re.search(r'Rescued:.*?(?=\n|$)', r2.text)
         if m:
-            iabot_msg = m.group(0).strip()
-        else:
-            body = r2.text.strip()
-            if body:
-                iabot_msg = body[:200]
+            # Strip unhelpful memory stats from the result line
+            iabot_msg = re.sub(r';?\s*Memory Used:.*', '', m.group(0)).strip()
 
     return "ok", iabot_msg
 
