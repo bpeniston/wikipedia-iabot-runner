@@ -196,6 +196,20 @@ def is_logged_out(html):
         or "you must be logged" in lower
     )
 
+def _short_exc(exc):
+    """Return a concise, human-readable version of a requests exception."""
+    msg = str(exc)
+    if "timed out" in msg or "Read timeout" in msg:
+        return "timed out"
+    if "Connection" in msg:
+        return "connection error"
+    if "401" in msg:
+        return "401 Unauthorized"
+    if "403" in msg:
+        return "403 Forbidden"
+    # Fall back to the first sentence / 60 chars
+    return msg.split("\n")[0][:60]
+
 def submit_page(session, title):
     """
     Submit one Wikipedia article to IABot.
@@ -218,7 +232,7 @@ def submit_page(session, title):
         r.raise_for_status()
     except requests.RequestException as exc:
         log.error("Network error fetching IABot form: %s", exc)
-        return "error", None
+        return "error", _short_exc(exc)
 
     if is_heavy_load(r.text):
         return "heavy_load", None
@@ -230,7 +244,7 @@ def submit_page(session, title):
     if not form:
         log.warning("No <form> found on IABot page – HTML snippet:\n%s",
                     r.text[:400])
-        return "error", None
+        return "error", "no form on IABot page"
 
     # ── Step 2: Build POST payload ─────────────────────────────────────────
     payload = {}
@@ -279,7 +293,7 @@ def submit_page(session, title):
         r2.raise_for_status()
     except requests.RequestException as exc:
         log.error("Network error submitting to IABot: %s", exc)
-        return "error", None
+        return "error", _short_exc(exc)
 
     if is_heavy_load(r2.text):
         return "heavy_load", None
