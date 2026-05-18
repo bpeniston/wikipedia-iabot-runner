@@ -487,7 +487,8 @@ def main():
             save_progress(state)
 
         write_status(state, recent)
-        upload_status()
+        if len(recent) % 10 == 0:
+            upload_status()
 
         if state["queue"]:
             log.info("  Waiting %d seconds…", INTERVAL)
