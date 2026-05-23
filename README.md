@@ -4,7 +4,7 @@ Reads your Wikipedia watchlist and submits each article to [IABot](https://iabot
 
 Edits appear in Wikipedia under your own account (not InternetArchiveBot) and are tagged `IABotManagementConsole`.
 
-Progress is saved to `~/.iabot_progress.json` so the script can be interrupted and resumed at any time. A live status page (`navybook.com/WP` or similar) is uploaded to your web server after each submission.
+Progress is saved to `~/.iabot_progress.json` so the script can be interrupted and resumed at any time. A live status page (`navybook.com/WP` or similar) is uploaded to your web server every ~10 minutes and automatically displays restart instructions if the script stops.
 
 ## Requirements
 
@@ -101,11 +101,22 @@ IABot makes **two Wikipedia edits** per article when it finds work to do:
 
 Both edits appear under your Wikipedia account, tagged `IABotManagementConsole`.
 
-If an article returns `Rescued: 0; Tagged dead: 0; Archived: 0` it means all links were already archived or live — no edit is made.
+The result line in the log and status page explains what happened:
+- **Rescued: N** — dead/404 links that already had an archive copy; IABot added that URL to the citation
+- **Archived: N** — live links not yet in the Wayback Machine; IABot submitted them for future preservation
+- **Tagged dead: N** — dead links with no archive available; marked as dead in the citation
+- `Rescued: 0; Tagged dead: 0; Archived: 0` — all links already archived; no edit made
 
-## Key implementation notes
+## Session expiry
 
-- The IABot form field for the Wikipedia URL is `pagesearch`
-- The `archiveall` checkbox must be explicitly set to `on` in the POST payload — without it IABot only analyzes the page but does not save any changes
-- IABot embeds its processing log in an HTML comment at the top of the response; the result line (`Rescued: X...`) is extracted with a regex
-- Session cookies are read from Safari via `browser_cookie3`, saved to `~/.iabot_cookie`, and reloaded from that file on subsequent runs (avoids needing Full Disk Access for SSH-started processes)
+The IABot session cookie lasts a few days. When it expires the script exits and the status page shows a red alert with restart instructions. To fix:
+
+1. Log back in at [iabot.wmcloud.org](https://iabot.wmcloud.org) in Safari
+2. Re-save the cookie (from Terminal, not SSH):
+   ```bash
+   ~/Documents/devstuff/.venv/bin/python3 ~/Documents/devstuff/save_iabot_cookie.py
+   ```
+3. Restart the script:
+   ```bash
+   nohup ~/Documents/devstuff/.venv/bin/python3 ~/Documents/devstuff/iabot_runner.py >> ~/iabot_runner_out.txt 2>&1 &
+   ```
