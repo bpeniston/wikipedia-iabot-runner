@@ -27,11 +27,26 @@
   .refresh { font-size: 0.8rem; color: #999; margin-top: 20px; text-align: right; }
   .eta { color: #2563eb; }
   #status-msg { color: #dc2626; font-size: 0.85rem; min-height: 1.2em; }
+  #stopped-alert { display: none; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; }
+  #stopped-alert h2 { margin: 0 0 10px; font-size: 1rem; color: #b91c1c; }
+  #stopped-alert ol { margin: 10px 0 0 18px; padding: 0; color: #333; line-height: 1.7; }
+  #stopped-alert code { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 4px; padding: 2px 6px; font-size: 0.85rem; user-select: all; }
 </style>
 </head>
 <body>
 <h1>Wikipedia IABot Runner</h1>
 <div class="subtitle">Submitting watchlist articles to the Internet Archive Bot &bull; <span id="status-msg"></span></div>
+
+<div id="stopped-alert">
+  <h2>⚠️ Script has stopped</h2>
+  <ol>
+    <li>Log back in at <a href="https://iabot.wmcloud.org" target="_blank">iabot.wmcloud.org</a> in Safari</li>
+    <li>Re-save the cookie:<br>
+      <code>~/Documents/devstuff/.venv/bin/python3 ~/Documents/devstuff/save_iabot_cookie.py</code></li>
+    <li>Restart:<br>
+      <code>nohup ~/Documents/devstuff/.venv/bin/python3 ~/Documents/devstuff/iabot_runner.py >> ~/iabot_runner_out.txt 2>&1 &</code></li>
+  </ol>
+</div>
 
 <div class="stats">
   <div class="stat"><div class="stat-label">Done</div><div class="stat-value" id="done">—</div></div>
@@ -113,9 +128,15 @@ function load() {
 
       document.getElementById('fetched').textContent = new Date().toLocaleTimeString();
       document.getElementById('status-msg').textContent = '';
+
+      // Show stopped alert if last_update is more than 20 minutes ago
+      const stale = d.last_update
+        && (Date.now() - new Date(d.last_update).getTime()) > 20 * 60 * 1000;
+      document.getElementById('stopped-alert').style.display = stale ? 'block' : 'none';
     })
     .catch(e => {
       document.getElementById('status-msg').textContent = 'Could not load status.json — script may not be running yet.';
+      document.getElementById('stopped-alert').style.display = 'block';
     });
 }
 
