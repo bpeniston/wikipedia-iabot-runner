@@ -117,16 +117,26 @@ def write_status(state, recent):
     with open(STATUS_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
+_last_upload_time = 0.0
+
 def upload_status():
-    import subprocess
+    """Upload status.json to DreamHost at most once per 10 minutes.
+    On failure, the next call (1 min later) retries — so a transient
+    SCP timeout never leaves the remote file stale for long."""
+    global _last_upload_time
+    import subprocess, time as _time
+    if _time.time() - _last_upload_time < 600:
+        return
     try:
         subprocess.run(
             ["scp", "-q", str(STATUS_FILE),
              f"{DREAMHOST_USER}@{DREAMHOST_HOST}:{DREAMHOST_PATH}"],
             timeout=15, check=True
         )
+        _last_upload_time = _time.time()
     except Exception as exc:
         log.warning("Could not upload status.json: %s", exc)
+        # Don't update _last_upload_time — retry next submission
 
 # ── Wikipedia API ─────────────────────────────────────────────────────────────
 
@@ -487,8 +497,7 @@ def main():
             save_progress(state)
 
         write_status(state, recent)
-        if len(recent) % 10 == 0:
-            upload_status()
+        upload_status()
 
         if state["queue"]:
             log.info("  Waiting %d seconds…", INTERVAL)
